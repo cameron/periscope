@@ -1,0 +1,10 @@
+{
+  "name": "periscope",
+  "version": "0.1.0",
+  "main": "periscope.js",
+  "ignore": [
+    ".DS_Store",
+    ".git",
+    ".gitignore"
+  ]
+}

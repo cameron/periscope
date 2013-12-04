@@ -1,0 +1,68 @@
+#microscope {
+  width: 100000px;
+  background-color: white;
+  position: absolute;
+  top: 0px;
+}
+
+.node {
+  cursor: pointer;
+}
+
+.node circle {
+  fill: #ffffff;
+  stroke: #4682b4;
+  stroke-width: 1.5px;
+}
+
+.node {
+  font-size: 12px;
+  font-family: 'Helvetica Neue';
+}
+
+.node .value {
+  color: rgb(153, 153, 153);
+}
+
+.collection .key {
+  fill: #46b484;
+}
+
+.method .key {
+  fill: #5c46b4;
+}
+
+.primitive .key {
+  fill: #4682b4;
+}
+
+.link {
+  fill: none;
+  stroke: #dddddd;
+  stroke-width: 1.5px;
+}
+
+.boolean .value,
+ .function .value {
+  font-family: Courier;
+}
+
+.boolean .value {
+  font-weight: bold;
+}
+
+.string .value {
+  fill: #ff0000;
+}
+
+.array .value {
+  }.object .value {
+  }.null .value,
+ .undefined .value {
+  fill: #999999;
+  font-style: italic;
+}
+
+.periscope-value-editor {
+  position: absolute;
+}
