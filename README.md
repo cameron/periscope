@@ -1,6 +1,14 @@
 # Periscope
 
-A sea-level view of your angular scope tree.
+A sea-level view of your angular scope tree--with inline primitive editing.
+
+Properties are sorted and colored by type class:
+
+* objects and arrays (collections)
+* undefined, null, string, number, boolean (primitives)
+* functions and methods
+
+![Example periscope visualization](docs/example.png)
 
 #### _Caveat emptor_
 
