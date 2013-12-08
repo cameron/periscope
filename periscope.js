@@ -1,4 +1,4 @@
-(function(d3, $){
+(function(d3, $, _, undefined){
 
   // closure organizing the Node class and helpers
   var getTreeNode = (function(){
@@ -372,4 +372,4 @@
     makeTree();
     scope.$watch(updateTree);
   });
-}).call(window, d3, $);
+}).call(window, d3, $, _);

@@ -7,8 +7,10 @@
     ".git",
     ".gitignore"
   ],
-  "dependencies": [
-    "angular": "~1.2.1",
-    "d3": "~3.3.11"
-  ]
+  "dependencies": {
+    "angular": "~1.2.4",
+    "d3": "~3.3.11",
+    "underscore": ">=1.5.0",
+    "jquery": "~2.0.3"
+  }
 }
