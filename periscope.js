@@ -1,5 +1,16 @@
 (function(d3, $, _, undefined){
 
+  // underscore mixins
+  _.mixin({
+
+    // if value is not present in array, then add it
+    shouldContain: function(array, value){
+      if(array.indexOf(value) == -1)
+        array.push(value);
+      return array;
+    }
+  });
+
   // shared by d3 and Node code
   var PRIMITIVE = 'primitive',
       METHOD = 'method',
@@ -18,33 +29,30 @@
 
 
   // closure organizing the Node class and helpers
-  var getTreeNode = (function(){
+  var Node = (function(){
 
+    // Nodes are d3 data objects, wrappers on each object in the
+    // object tree visualized
     var Node = function(value){
       this.valueType = type(value);
       this.valueTypeClass = typeClass[this.valueType];
       this.value = value;
     };
 
-    Node.getTreeNode = function(value, timestamp){
-      var make = function(){ return new Node(value); }
-      if(!_.isObject(value))
-        return make()
-      return value && ownProp(value, '$$$d3data') || make();
-    }
-
     Node.prototype.refresh = function(key, timestamp, parent){
-      if(_.isObject(this.value) && !ownProp(this.value, '$$$d3data'))
-        this.value.$$$d3data = this;
+      if(_.isObject(this.value)){
+       !ownProp(this.value, '_d3Parents') ?
+          (this.value._d3Parents = [this]) :
+          _.shouldContain(this.value._d3Parents, this);
+      }
 
       if(this.visited == timestamp) return;
       this.visited = timestamp;
 
       this.name = nodeName(key, this.value);
       this.parent = parent;
-      var keys  = nodeKeys(this.value, this.visited);
-      this.valueStr = nodeValue(this.valueType, this.value, keys);
-      this.hidden = nodeHidden(this);
+      this.keys = this.generateKeys();
+      this.hidden = this.isHidden();
 
       if(!_.isObject(this.value)){
         delete this.children;
@@ -54,16 +62,53 @@
       if(_.isFunction(this.value)){
         this.value.src = this.value.toString().replace(/function[ ]?/,'');
       };
+    }
 
+    Node.prototype.formBabbies = function(){
       var children = this.children ? 'children' : '_children';
-      this[children] = _.filter(_.map(keys, _.bind(function(k, i){
-        var n = Node.getTreeNode(this.value[k], this.visited);
+      this[children] = _.filter(_.map(this.keys, _.bind(function(k, i){
+        var n = new Node(this.value[k]);
         n.refresh(k, this.visited, this);
         return n;
       }, this)), function(c){ return !c.hidden; });
     }
 
+    Node.prototype.valueStr = function(){
+      var that = this;
+      return (({
+        string: function(v){ return '"' + v + '"'},
+        object: function(v){ return '{ ' + that.keys.length + ' }'},
+        array: function(v){ return '[ ' + v.length + ' ]'},
+        undefined: function(v){ return "undefined"; }
+      })[this.valueType] || function(v){ return v })(this.value);
+    };
+
+    Node.prototype.isHidden = function(){
+      return _.isFunction(this.value);
+    };
+
+    Node.prototype.generateKeys = function(){
+      if(!_.isObject(this.value)) return [];
+
+      // TODO: do this without modifying `value` directly.
+      // Add child $scopes as properties.
+      if(this.value && this.value.$$childHead){
+        var key, child = this.value.$$childHead;
+        do{
+          if(child.__proto__.$id){ // only want non isolated scopes
+            key = "scope-" + child.$id;
+            this.value[key] = child;
+          }
+          child = child.$$nextSibling;
+        } while(child);
+      };
+
+      return _.isObject(this.value) ?
+        filterKeys(_.keys(this.value), this.value, this.timestamp) : [];
+    };
+
     Node.prototype.showChildren = function(show){
+      if(!this.children && !this._children) this.formBabbies();
       show = show === undefined ? !this.children : show;
       if (show) {
         this.children = this._children;
@@ -72,13 +117,8 @@
         this._children = this.children;
         this.children = null;
       }
-      //    _.invoke(show ? this._children : this.children, 'showChildren', show);
       update(this, true);
     };
-
-    Node.prototype.hide = function(){
-      //    this.
-    }
 
     Node.prototype.open = function(){
       this.showChildren(true);
@@ -91,7 +131,6 @@
     Node.prototype.toggleChildren = function(){
       this.showChildren();
     };
-
 
     Node.prototype.assignOnNearestScope = function(keys, value){
       if(!this.parent) return;
@@ -117,7 +156,7 @@
       var input = $('<input/>', {
         type: 'text',
         class: 'periscope-value-editor',
-        value: this.valueType == 'undefined' ? '' : this.valueStr,
+        value: this.valueType == 'undefined' ? '' : this.valueStr(),
         css: {
           'top': loc.top,
           'left': loc.left
@@ -136,21 +175,13 @@
     };
 
     // helpers
-    var nodeValue = function(type, value, keys){
-      return (({
-        string: function(v){ return '"' + v + '"'},
-        object: function(v){ return '{ ' + keys.length + ' }'},
-        array: function(v){ return '[ ' + v.length + ' ]'},
-        undefined: function(v){ return "undefined"; }
-      })[type] || function(v){ return v })(value);
-    };
 
     var nodeName = function(key, value){
       if(!_.isFunction(value)) return key;
       return key + value.toString().replace(/function[ ]*/,'').replace(/{(.|\n)*/gm,'');
     };
 
-    var hidden = ['this'];
+    var hidden = ['this', '_d3Parents'];
     var filterKeys = function(keys, obj, timestamp){
       return _.filter(keys, function(k){
         var v = obj[k];
@@ -178,36 +209,13 @@
         typeof value;
     };
 
-    var nodeKeys = function(value, timestamp){
-      if(!_.isObject(value)) return [];
-
-      // TODO: do this without modifying `value` directly.
-      // Add child $scopes as properties.
-      if(value && value.$$childHead){
-        var key, child = value.$$childHead;
-        do{
-          if(child.__proto__.$id){ // only want non isolated scopes
-            key = "scope-" + child.$id;
-            value[key] = child;
-          }
-          child = child.$$nextSibling;
-        } while(child);
-      };
-
-      return _.isObject(value) ? filterKeys(_.keys(value), value, timestamp) : [];
-    };
-
-    var nodeHidden = function(node){
-      return _.isFunction(node.value);
-    };
-
     var ownProp = function(obj, key){
       if(obj && obj.hasOwnProperty(key)){
         return obj[key];
       }
     }
 
-    return Node.getTreeNode;
+    return Node;
   })();
 
 
@@ -220,6 +228,7 @@
       i = 0,
       root,
       svg,
+      svgContainer,
       tree,
       totalNodes = 0,
       maxLabelLength = 0,
@@ -388,7 +397,7 @@
     .text(function(d) { return d.name; });
 
     nodeUpdate.select("text.value")
-    .text(function (d){ return d.valueStr });
+    .text(function (d){ return d.valueStr() });
 
     // Transition exiting nodes to the parent's new position.
     var nodeExit = node.exit().transition()
@@ -436,26 +445,73 @@
   }
 
 
-  var centerOnFirstRun = _.once(centerNode);
+  var centerOnce = _.once(function(root){
+    centerNode(root);
+    root.showChildren(true);
+  });
   var updateTree = _.throttle(function(){
-    root = getTreeNode(scope);
     root.refresh("root", new Date().getTime());
 
     root.x0 = height / 2;
     root.y0 = 0;
 
     update(root);
-    centerOnFirstRun(root);
+    centerOnce(root);
   }, 500);
-
-
-  window.periscope = function(_scope){
-    scope = _scope;
-  };
 
   var zoom = function() {
     svg.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
   };
+
+  var keyHandlers = {};
+  var keyUp = function(key, func){
+    keyHandlers[key] = func;
+  };
+
+  var onKeyUp = function(evt){
+    // Thanks john! github.com/jeresig/jquery.hotkeys
+    // Don't fire in text-accepting inputs that we didn't directly bind to
+    var textAcceptingInputTypes = ["text", "password", "number", "email", "url", "range", "date", "month", "week", "time", "datetime", "datetime-local", "search", "color", "tel"];
+    if ( this !== evt.target && (/textarea|select/i.test( evt.target.nodeName ) ||
+        jQuery.inArray(evt.target.type, textAcceptingInputTypes) > -1 ) ) {
+      return;
+    }
+    keyHandlers[evt.keyCode] && keyHandlers[evt.keyCode](evt);
+  }
+
+  var redrawAfter = function(fn){
+    return function(){
+      fn();
+      $("body").scrollTop($("body").scrollTop() + 1); // boosh
+      $("body").scrollTop($("body").scrollTop() - 1); // double boosh
+    }
+  };
+
+  var hideOverlay = redrawAfter(function(){
+    svgContainer.attr('display', 'none');
+    $(document).unbind('keyup', onKeyUp);
+  });
+
+  var showOverlay = redrawAfter(function(){
+    svgContainer.attr('display', 'inline');
+    $(document).keyup(onKeyUp);
+  });
+
+  var addPeriscope = function(){
+
+    var ps = $("<div id='periscope-toggle'>periscope</div>");
+    $("body").append(ps);
+    ps.click(function(){
+      if(svgContainer.attr('display') != 'none'){
+        hideOverlay();
+      } else {
+        showOverlay();
+      }
+    });
+  };
+
+  // esc key
+  keyUp(27, hideOverlay);
 
   var makeTree = function(){
     width = $(document).width();
@@ -465,8 +521,9 @@
              .size([height, width])
              .sort(sortByValueTypeClassThenAlpha);
 
-    var svgContainer = d3.select("body").append("svg")
-          .attr('id', 'microscope')
+    svgContainer = d3.select("body").append("svg")
+          .attr('id', 'periscope')
+          .attr('display', 'none')
           .attr("width", width)
           .attr("height", height)
           .call(zoomListener);
@@ -475,10 +532,13 @@
           .append("g")
           .attr("width", width)
           .attr("height", height);
+
+    addPeriscope();
+    scope = angular.element(document).scope();
+    root = new Node(scope);
+    root.formBabbies();
+    scope.$watch(updateTree);
   };
 
-  $(function(){
-    makeTree();
-    scope.$watch(updateTree);
-  });
+  $(makeTree);
 }).call(window, d3, $, _);

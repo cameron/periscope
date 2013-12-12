@@ -1,8 +1,23 @@
-#microscope {
-  width: 100000px;
+#periscope {
   background-color: white;
-  position: absolute;
+  position: fixed;
   top: 0px;
+  left: 0px;
+}
+
+#periscope-toggle {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+
+  background-color: rgba(0,0,0, .2);
+  color: rgba(255, 255, 255, .7);
+  border-radius: 20px;
+  padding: .4em 1em;
+  font-size: .8rem;
+  text-transform: uppercase;
+  font-weight: bold;
+  letter-spacing: .2em;
 }
 
 .node {
