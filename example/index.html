@@ -5,8 +5,14 @@
   <link rel="stylesheet" type="text/css" href="../periscope.css">
 </head>
 <body ng-app="periscope">
-  <div ng-controller="MainCtrl">
-
+  <div ng-controller="OneCtrl">
+    {{ one }}
+    <div ng-controller="TwoCtrl">
+      {{ two }}
+      <div ng-controller="ThreeCtrl">
+      {{ three }}
+      </div>
+    </div>
   </div>
   <script src="https://code.jquery.com/jquery-2.0.3.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.3.11/d3.min.js"></script>
@@ -16,11 +22,14 @@
   <script src="../periscope.js"></script>
   <script>
     angular.module('periscope', ['ngAnimate'])
-    .run(function($rootScope, $window){
-      $window.periscope($rootScope);
+    .controller('OneCtrl', function($scope) {
+      $scope.one = 'one';
     })
-    .controller('MainCtrl', function($scope) {
-
+    .controller('TwoCtrl', function($scope) {
+      $scope.two = 'two';
+    })
+    .controller('ThreeCtrl', function($scope) {
+      $scope.three = 'three'
     })
   </script>
 </body>
