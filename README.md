@@ -17,7 +17,7 @@ This is alpha software--rough seas ahead.
 # Up Periscope!
 
 ```
- <script src="lib/d3/d3.js"></script>
+ <script src="lib/[_, $, d3, angular].js"></script>
  <script src="lib/periscope/periscope.js"></script>
  <link rel="stylesheet" href="lib/periscope/periscope.css"></script>
 ```
