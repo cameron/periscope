@@ -33,46 +33,63 @@
 
     // Nodes are d3 data objects, wrappers on each object in the
     // object tree visualized
-    var Node = function(value){
+    var Node = function(key, value, parent){
       this.valueType = type(value);
       this.valueTypeClass = typeClass[this.valueType];
       this.value = value;
-    };
-
-    Node.prototype.refresh = function(key, timestamp, parent){
-      if(_.isObject(this.value)){
-       !ownProp(this.value, '_d3Parents') ?
-          (this.value._d3Parents = [this]) :
-          _.shouldContain(this.value._d3Parents, this);
-      }
-
-      if(this.visited == timestamp) return;
-      this.visited = timestamp;
-
-      this.name = nodeName(key, this.value);
+      this.adopt(value);
       this.parent = parent;
-      this.keys = this.generateKeys();
-      this.hidden = this.isHidden();
-
-      if(!_.isObject(this.value)){
-        delete this.children;
-        delete this._children;
-      }
-
+      this.name = nodeName(key, this.value);
       if(_.isFunction(this.value)){
         this.value.src = this.value.toString().replace(/function[ ]?/,'');
       };
+    };
+
+    // We want to cache the d3 tree node objects (instances of Node)
+    // mostly to save state (opened/unopened, future features). So,
+    // hey, why not cache them on the objects they wrap? Also, since
+    // we lazy-load the tree, we can allow circular references to occur
+    // without busting stacks or getting stuck in loops. This means
+    // that each value might occur multiple times in the
+    // tree, and thus have multiple Node instance wrappers stored in
+    // _d3Parents.
+    Node.prototype.adopt = function(value){
+      if(!_.isObject(value)) return;
+      if(!ownProp(value, '_d3Parents')) value._d3Parents = [];
+      value._d3Parents.push(this);
+    };
+
+    // Do this when the values in the tree change.
+    Node.prototype.refresh = function(){
+      this.hidden = this.isHidden();
+      this.keys = this.genKeys();
+
+      // Don't recurse into unopened nodes.
+      // See showChildren for the positive sense of lazy loading.
+      (this.children || this._children) && this.formBabbies();
     }
 
+    // Inspect the _d3Parents cache on the value at key, return
+    // the Node instance that is this node's child, or create a new one.
+    // See note at `adopt` above for context.
+    Node.prototype.getChild = function(key){
+      var child;
+      if(_.isObject(this.value) && ownProp(this.value[key], '_d3Parents'))
+        child = _.findWhere(this.value[key]._d3Parents, {'parent': this});
+      return child || new Node(key, this.value[key], this);
+    }
+
+    // Create/update Node instances for each property on this.value.
     Node.prototype.formBabbies = function(){
       var children = this.children ? 'children' : '_children';
       this[children] = _.filter(_.map(this.keys, _.bind(function(k, i){
-        var n = new Node(this.value[k]);
-        n.refresh(k, this.visited, this);
-        return n;
+        var child = this.getChild(k, this.value[k]);
+        child.refresh();
+        return child;
       }, this)), function(c){ return !c.hidden; });
     }
 
+    // Print this to the right of the tree node.
     Node.prototype.valueStr = function(){
       var that = this;
       return (({
@@ -87,7 +104,8 @@
       return _.isFunction(this.value);
     };
 
-    Node.prototype.generateKeys = function(){
+    // Decide which keys we care to include as children.
+    Node.prototype.genKeys = function(){
       if(!_.isObject(this.value)) return [];
 
       // TODO: do this without modifying `value` directly.
@@ -132,6 +150,8 @@
       this.showChildren();
     };
 
+    // Walk up the tree looking for a $scope, then apply `value`
+    // to the walked path.
     Node.prototype.assignOnNearestScope = function(keys, value){
       if(!this.parent) return;
 
@@ -150,16 +170,18 @@
       return expr;
     };
 
+    // Show an inline primitive editor
     Node.prototype.editValue = function(){
       if(this.valueTypeClass != PRIMITIVE) return;
-      var loc = $(d3.event.target).position()
+      var loc = $(d3.event.target).position();
+      var offset = $("body").offset(); // loc does not return coords relative to the window :( chrome bug?
       var input = $('<input/>', {
         type: 'text',
         class: 'periscope-value-editor',
         value: this.valueType == 'undefined' ? '' : this.valueStr(),
         css: {
-          'top': loc.top,
-          'left': loc.left
+          'top': loc.top - offset.top,
+          'left': loc.left - offset.left
         }
       });
 
@@ -357,9 +379,9 @@
                     .attr("class", nodeClass)
                     .attr("transform", function(d) { return "translate(" + source.y0 + "," + source.x0 + ")"; })
                     .on("click", function(d){
-                      if(d.valueTypeClass == COLLECTION) d.toggleChildren();
+                      if(d.valueTypeClass == COLLECTION)
+                        d.toggleChildren(), centerNode(d);
                       if(d.valueTypeClass == PRIMITIVE) d.editValue();
-                      centerNode(d);
                     });
 
 
@@ -470,7 +492,7 @@
 
   var onKeyUp = function(evt){
     // Thanks john! github.com/jeresig/jquery.hotkeys
-    // Don't fire in text-accepting inputs that we didn't directly bind to
+    // Don't fire in text-accepting inputs that we ddin't directly bind to
     var textAcceptingInputTypes = ["text", "password", "number", "email", "url", "range", "date", "month", "week", "time", "datetime", "datetime-local", "search", "color", "tel"];
     if ( this !== evt.target && (/textarea|select/i.test( evt.target.nodeName ) ||
         jQuery.inArray(evt.target.type, textAcceptingInputTypes) > -1 ) ) {
@@ -541,8 +563,9 @@
     addPeriscope();
     makeTree();
     scope = angular.element($("[ng-app]")[0]).scope();
-    root = new Node(scope);
+    root = new Node("root", scope);
     root.formBabbies();
+    root.refresh();
     scope.$watch(updateTree);
     updateTree();
   });
