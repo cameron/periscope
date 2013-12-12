@@ -482,8 +482,10 @@
   var redrawAfter = function(fn){
     return function(){
       fn();
-      $("body").scrollTop($("body").scrollTop() + 1); // boosh
-      $("body").scrollTop($("body").scrollTop() - 1); // double boosh
+
+      // boosh
+      $("body").css({'display':'none'});
+      setTimeout(function(){$("body").css({'display':'block'})}, 0);
     }
   };
 
@@ -533,12 +535,15 @@
           .attr("width", width)
           .attr("height", height);
 
+  };
+
+  $(function(){
     addPeriscope();
-    scope = angular.element(document).scope();
+    makeTree();
+    scope = angular.element($("[ng-app]")[0]).scope();
     root = new Node(scope);
     root.formBabbies();
     scope.$watch(updateTree);
-  };
-
-  $(makeTree);
+    updateTree();
+  });
 }).call(window, d3, $, _);
