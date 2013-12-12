@@ -1,5 +1,22 @@
 (function(d3, $, _, undefined){
 
+  // shared by d3 and Node code
+  var PRIMITIVE = 'primitive',
+      METHOD = 'method',
+      COLLECTION = 'collection';
+
+  var typeClass = {
+    string: PRIMITIVE,
+    number: PRIMITIVE,
+    boolean: PRIMITIVE,
+    null: PRIMITIVE,
+    undefined: PRIMITIVE,
+    function: METHOD,
+    object: COLLECTION,
+    array: COLLECTION
+  };
+
+
   // closure organizing the Node class and helpers
   var getTreeNode = (function(){
 
@@ -10,28 +27,32 @@
     };
 
     Node.getTreeNode = function(value, timestamp){
-      var node = value && value.$$$d3data;
       var make = function(){ return new Node(value); }
       if(!_.isObject(value))
-        node = make()
-      else if(!value.$$$d3data)
-        node = value.$$$d3data = make(), value.$$$d3data.visited = timestamp;
-      return node;
+        return make()
+      return value && ownProp(value, '$$$d3data') || make();
     }
 
     Node.prototype.refresh = function(key, timestamp, parent){
+      if(_.isObject(this.value) && !ownProp(this.value, '$$$d3data'))
+        this.value.$$$d3data = this;
+
+      if(this.visited == timestamp) return;
+      this.visited = timestamp;
+
       this.name = nodeName(key, this.value);
       this.parent = parent;
-      this.visited = timestamp;
       var keys  = nodeKeys(this.value, this.visited);
       this.valueStr = nodeValue(this.valueType, this.value, keys);
       this.hidden = nodeHidden(this);
 
-      if(!_.isObject(this.value)) return;
+      if(!_.isObject(this.value)){
+        delete this.children;
+        delete this._children;
+      }
 
       if(_.isFunction(this.value)){
         this.value.src = this.value.toString().replace(/function[ ]?/,'');
-        delete this.value;
       };
 
       var children = this.children ? 'children' : '_children';
@@ -137,7 +158,6 @@
         if(!obj.hasOwnProperty(k)) return;
         if(_.contains(hidden, k)) return;
         if(k.indexOf('$') == 0) return;
-        if(v && v.$$$d3data && v.$$$d3data.visited == timestamp) return;
         return k;
       });
     };
@@ -160,6 +180,21 @@
     };
 
     var nodeKeys = function(value, timestamp){
+      if(!_.isObject(value)) return [];
+
+      // TODO: do this without modifying `value` directly.
+      // Add child $scopes as properties.
+      if(value && value.$$childHead){
+        var key, child = value.$$childHead;
+        do{
+          if(child.__proto__.$id){ // only want non isolated scopes
+            key = "scope-" + child.$id;
+            value[key] = child;
+          }
+          child = child.$$nextSibling;
+        } while(child);
+      };
+
       return _.isObject(value) ? filterKeys(_.keys(value), value, timestamp) : [];
     };
 
@@ -167,6 +202,11 @@
       return _.isFunction(node.value);
     };
 
+    var ownProp = function(obj, key){
+      if(obj && obj.hasOwnProperty(key)){
+        return obj[key];
+      }
+    }
 
     return Node.getTreeNode;
   })();
