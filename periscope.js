@@ -108,7 +108,6 @@
     // helper for assignOnNearestScope
     var assignExpr = function(keys, value){
       var expr = 'this["' + keys.join('"]["') + '"] = ' + (value || undefined);
-      console.log(expr);
       return expr;
     };
 
@@ -212,31 +211,36 @@
   })();
 
 
-  var scope;
+  // Thanks to:
+  // http://bl.ocks.org/robschmuecker/7880033
+  // http://bl.ocks.org/mbostock/4339083
 
-  var i = 0,
+  // d3 globals
+  var scope,
+      i = 0,
       root,
-      svg;
+      svg,
+      tree,
+      totalNodes = 0,
+      maxLabelLength = 0,
 
-  var margin = {top: 20, right: 120, bottom: 20, left: 120},
-      width = 100000 - margin.right - margin.left,
-      height = 800 - margin.top - margin.bottom;
+      // variables for drag/drop
+      selectedNode = null,
+      draggingNode = null,
+      translateCoords,
+      translateX,
+      translateY,
+      scale,
 
-  var PRIMITIVE = 'primitive',
-      METHOD = 'method',
-      COLLECTION = 'collection';
+      // panning variables
+      panTimer,
+      panSpeed = 200,
+      panBoundary = 20, // Within 20px from edges will pan when dragging.
 
-  var typeClass = {
-    string: PRIMITIVE,
-    number: PRIMITIVE,
-    boolean: PRIMITIVE,
-    null: PRIMITIVE,
-    undefined: PRIMITIVE,
-    function: METHOD,
-    object: COLLECTION,
-    array: COLLECTION
-  };
+      width,
+      height;
 
+  // d3 helpers
   var typeClassPriority = {};
   typeClassPriority[PRIMITIVE] = 0;
   typeClassPriority[COLLECTION] = 1;
@@ -250,9 +254,48 @@
     return d;
   }
 
-  var tree = d3.layout.tree()
-             .size([height, width])
-             .sort(sortByValueTypeClassThenAlpha);
+  var pan = function(domNode, direction) {
+    var speed = panSpeed;
+    if (panTimer) {
+      clearTimeout(panTimer);
+      translateCoords = d3.transform(svg.attr("transform"));
+      if (direction == 'left' || direction == 'right') {
+        translateX = direction == 'left' ? translateCoords.translate[0] + speed : translateCoords.translate[0] - speed;
+        translateY = translateCoords.translate[1];
+      } else if (direction == 'up' || direction == 'down') {
+        translateX = translateCoords.translate[0];
+        translateY = direction == 'up' ? translateCoords.translate[1] + speed : translateCoords.translate[1] - speed;
+      }
+      scale = zoomListener.scale();
+      svg.transition().attr("transform", "translate(" + translateX + "," + translateY + ")scale(" + scale + ")");
+      d3.select(domNode).select('g.node').attr("transform", "translate(" + translateX + "," + translateY + ")");
+      zoomListener.scale(zoomListener.scale());
+      zoomListener.translate([translateX, translateY]);
+      panTimer = setTimeout(function() {
+        pan(domNode, speed, direction);
+      }, 50);
+    }
+  }
+
+  var zoom = function() {
+    svg.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
+  }
+
+  var zoomListener = d3.behavior.zoom()
+                     .scaleExtent([0.1, 3])
+                     .on("zoom", zoom);
+
+  var centerNode = function(source) {
+    scale = zoomListener.scale();
+    var x = -source.y0;
+    var y = -source.x0;
+    x = x * scale + width / 2;
+    y = y * scale + height / 2;
+    d3.select('g').transition()
+    .attr("transform", "translate(" + x + "," + y + ")scale(" + scale + ")");
+    zoomListener.scale(scale);
+    zoomListener.translate([x, y]);
+  }
 
   var diagonal = d3.svg.diagonal()
                  .projection(function(d) { return [d.y, d.x]; });
@@ -262,13 +305,37 @@
     return ['node', d.valueType, d.valueTypeClass].join(" ");
   };
 
-  window.update = function(source, animate) {
+  d3.behavior.drag()
+  .on('drag', function(d) {
+    var relCoords = d3.mouse($('svg').get(0));
+    if (relCoords[0] < panBoundary) {
+      panTimer = true;
+      pan(this, 'left');
+    } else if (relCoords[0] > ($('svg').width() - panBoundary)) {
+
+      panTimer = true;
+      pan(this, 'right');
+    } else if (relCoords[1] < panBoundary) {
+      panTimer = true;
+      pan(this, 'up');
+    } else if (relCoords[1] > ($('svg').height() - panBoundary)) {
+      panTimer = true;
+      pan(this, 'down');
+    } else {
+      try {
+        clearTimeout(panTimer);
+      } catch (e) {
+
+      }
+    }
+  });
+
+  var update = function(source, animate) {
     var duration = animate ? 750 : 0;
 
     // Compute the new tree layout.
     var nodes = tree.nodes(root).reverse(),
         links = tree.links(nodes);
-
     // Normalize for fixed-depth.
     nodes.forEach(function(d) { d.y = d.depth * 180; });
 
@@ -283,6 +350,7 @@
                     .on("click", function(d){
                       if(d.valueTypeClass == COLLECTION) d.toggleChildren();
                       if(d.valueTypeClass == PRIMITIVE) d.editValue();
+                      centerNode(d);
                     });
 
 
@@ -368,8 +436,7 @@
   }
 
 
-  // get/create the d3 data object from a scopetree object
-
+  var centerOnFirstRun = _.once(centerNode);
   var updateTree = _.throttle(function(){
     root = getTreeNode(scope);
     root.refresh("root", new Date().getTime());
@@ -378,6 +445,7 @@
     root.y0 = 0;
 
     update(root);
+    centerOnFirstRun(root);
   }, 500);
 
 
@@ -390,25 +458,26 @@
   };
 
   var makeTree = function(){
-    svg = d3.select("body").append("svg")
+    width = $(document).width();
+    height = $(document).height();
+
+    tree = d3.layout.tree()
+             .size([height, width])
+             .sort(sortByValueTypeClassThenAlpha);
+
+    var svgContainer = d3.select("body").append("svg")
           .attr('id', 'microscope')
-          .attr("width", width + margin.right + margin.left)
-          .attr("height", height + margin.top + margin.bottom)
+          .attr("width", width)
+          .attr("height", height)
+          .call(zoomListener);
+
+    svg = svgContainer
           .append("g")
-          .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-
-    d3.select(self.frameElement).style("height", "800px");
-  };
-
-  var setupKeyboard = function(){
-    var handleKeystroke = function(e){
-
-    }
-    $('body').keyup(handleKeystroke);
+          .attr("width", width)
+          .attr("height", height);
   };
 
   $(function(){
-    setupKeyboard();
     makeTree();
     scope.$watch(updateTree);
   });
