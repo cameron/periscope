@@ -1,4 +1,4 @@
-(function(d3, $, _, undefined){
+(function(angular, d3, $, _, undefined){
 
   // underscore mixins
   _.mixin({
@@ -157,7 +157,7 @@
 
       keys = typeof keys == 'string' ? [keys] : keys;
 
-      if(this.parent.value instanceof scope.constructor)
+      if(this.parent.value.constructor.name === 'Scope')
         return this.parent.value.$apply(assignExpr(keys, value));
 
       keys.unshift(this.parent.name);
@@ -246,7 +246,8 @@
   // http://bl.ocks.org/mbostock/4339083
 
   // d3 globals
-  var scope,
+  var $rootScope,
+      $injector,
       i = 0,
       root,
       svg,
@@ -562,11 +563,12 @@
   $(function(){
     addPeriscope();
     makeTree();
-    scope = angular.element($("[ng-app]")[0]).scope();
-    root = new Node("root", scope);
+    $rootScope = $("[ng-app]").scope();
+    $injector = angular.injector(); // you can also use $("[ng-app]").injector()
+    root = new Node("root", $rootScope);
     root.formBabbies();
     root.refresh();
-    scope.$watch(updateTree);
+    $rootScope.$watch(updateTree);
     updateTree();
   });
-}).call(window, d3, $, _);
+}).call(window, angular, d3, $, _);
